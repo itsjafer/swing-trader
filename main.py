@@ -62,7 +62,7 @@ def parse_tweet(tweet):
     alpaca = tradeapi.REST(
         os.getenv("ACCESS_KEY_ID"),
         os.getenv("SECRET_ACCESS_KEY"),
-        base_url="https://paper-api.alpaca.markets"
+        base_url="https://api.alpaca.markets"
     )
 
     # Get the tweet
