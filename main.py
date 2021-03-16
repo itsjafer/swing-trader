@@ -99,7 +99,7 @@ def parse_tweet(tweet):
 
     account = alpaca.get_account()
     # Add trailing stop orders if we can
-    while len(purchases) > 0 and account.daytrade_count < 3 and attempts > 0:
+    while len(purchases) > 0 and account.daytrade_count < 3:
         ticker = list(purchases.keys())[0]
         quantity, price = purchases[ticker]
 
@@ -196,7 +196,7 @@ def getPositionSize(ticker, alpaca):
         currentPosition = 0
 
     # Check if we can even buy this many 
-    if (positionSize - currentPosition) * price > cash:
+    if (int(positionSize) - int(currentPosition)) * price > cash:
         print(f"Can't afford to buy {(positionSize - currentPosition)} shares. Only have {cash} in cash.")
         return 0,0
 
