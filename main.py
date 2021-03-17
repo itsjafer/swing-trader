@@ -59,6 +59,9 @@ def request_response(request):
 
 def parse_tweet(tweet):
     
+    if "added" not in tweet or "swing" not in tweet:
+        return False
+
     alpaca = tradeapi.REST(
         os.getenv("ACCESS_KEY_ID"),
         os.getenv("SECRET_ACCESS_KEY"),
