@@ -273,6 +273,7 @@ def addTrailingStops(alpaca):
                 trail_percent=10,  # stop price will be hwm*0.90
                 time_in_force='gtc',
             )
+            print(f"Placed a trailing stop order for {order.symbol}")
         except Exception as e:
             print(f"Unable to place sell order for {order.symbol}")
             print(e)
