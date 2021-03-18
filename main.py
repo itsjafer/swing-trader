@@ -64,7 +64,7 @@ def parse_tweet(tweet):
     alpaca = tradeapi.REST(
         os.getenv("ACCESS_KEY_ID"),
         os.getenv("SECRET_ACCESS_KEY"),
-        base_url="https://api.alpaca.markets"
+        base_url=os.getenv("BASE_URL")
     )
 
     # Add trailing stops to some of our orders
