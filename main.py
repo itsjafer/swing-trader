@@ -172,7 +172,7 @@ def getPositionSize(ticker, alpaca):
         return 0, 0
 
     accountRisk = equity * 0.05 # the max we're willing to lose overall
-    tradeRisk = 1 - 0.1 # How much we're willing to lose on one trade
+    tradeRisk = 0.5 # How much we're willing to lose on one trade
     positionSize = accountRisk / (tradeRisk * price) # number of shares we can buy
     
     try:
