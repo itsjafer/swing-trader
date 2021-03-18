@@ -8,7 +8,7 @@ import json
 import time
 from pathlib import Path
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from urllib.request import urlopen
 
 env_path = Path('.') / '.env'
@@ -59,14 +59,19 @@ def request_response(request):
 
 def parse_tweet(tweet):
     
-    if "added" not in tweet or "swing" not in tweet:
-        return False
+
 
     alpaca = tradeapi.REST(
         os.getenv("ACCESS_KEY_ID"),
         os.getenv("SECRET_ACCESS_KEY"),
         base_url="https://api.alpaca.markets"
     )
+
+    # Add trailing stops to some of our orders
+    addTrailingStops(alpaca)
+
+    if "added" not in tweet or "swing" not in tweet:
+        return False
 
     # Get the tweet
     # Get the stock tickers from the tweet
@@ -101,16 +106,9 @@ def parse_tweet(tweet):
             print(f"Purchased {quantity} of {ticker} for {price}")
 
     account = alpaca.get_account()
-    # Add trailing stop orders if we can
-    while len(purchases) > 0 and account.daytrade_count < 3:
-        ticker = list(purchases.keys())[0]
-        quantity, price = purchases[ticker]
 
-        if trailingStopTicker(alpaca, ticker, quantity, price, unique_id):
-            purchases.pop(ticker)
-            continue
-
-        time.sleep(1)
+    # Go through our open positions and sell any positions that are too old
+    sellStaleOrders()
 
     if len(purchases) > 0:
         return False
@@ -143,31 +141,15 @@ def purchaseTicker(alpaca, ticker, quantity, price, unique_id):
     account = alpaca.get_account()
 
     try:
-        # If we can't day trade, we'll do a bracket order
-        if account.daytrade_count >= 3:
-            alpaca.submit_order(
-                symbol=ticker,
-                qty=quantity,
-                side='buy',
-                type='market',
-                time_in_force='gtc',
-                order_class='bracket',
-                take_profit={'limit_price': price * 1.05},
-                stop_loss={
-                    'stop_price': price * 0.90,
-                    'limit_price': price * 0.85
-                }
-            )
-        # If we can daytrade, we'll do a basic buy, and then add a trailing stop later
-        else:
-            alpaca.submit_order(
-                symbol=ticker,
-                qty=quantity,
-                side='buy',
-                type='market',
-                time_in_force='gtc',
-                client_order_id = f'{ticker}+{unique_id}'
-            )
+        # We buy now, and we'll set a sell order later to avoid PDT
+        alpaca.submit_order(
+            symbol=ticker,
+            qty=quantity,
+            side='buy',
+            type='market',
+            time_in_force='gtc',
+            client_order_id = f'{ticker}+{unique_id}'
+        )
     except Exception as e:
         print(e)
         return False
@@ -211,7 +193,6 @@ def getPositionSize(ticker, alpaca):
     return 0,0
 
 def getAllTickers():
-
     r = urlopen("https://www.sec.gov/include/ticker.txt")
 
     tickers = {line.decode('UTF-8').split("\t")[0].upper() for line in r}
@@ -230,13 +211,73 @@ def getStockTicker(tweet):
         tickers.add(word.upper())
     return tickers
 
-def submitOrder(alpaca, qty, stock, side, resp):
-    if(qty > 0):
+def sellStaleOrders(alpaca):
+    # Check if we need to sell something
+    positions = {position.symbol for position in alpaca.list_positions()}
+    orders = alpaca.list_orders(status='all')
+    heldOrders = collections.defaultdict(list)
+    for order in orders:
+        if order.status == "held" and order.symbol in positions and order.filled_at == None:
+            heldOrders[order.symbol].append((order.qty, order.submitted_at, order.id))
+
+    for heldOrder in heldOrders:
+        submissionTime = str(heldOrders[heldOrder][0][1])
+        dateObject = datetime.fromisoformat(submissionTime)
+        today = datetime.now(timezone.utc)
+        if (today - dateObject).days > 14:
+            print(heldOrder + " has been held for more than 14 days")
+            # time to get rid of this stock
+            for quantity, submitted, id in heldOrders[heldOrder]:
+                alpaca.cancel_order(id)
+            # sell whatever we have of that stock
+            quantityToSell = alpaca.get_position(heldOrder).qty
+            try:
+                alpaca.submit_order(
+                    symbol=heldOrder,
+                    qty=quantityToSell,
+                    side="sell",
+                    type="market",
+                    time_in_force="gtc"
+                )
+            except:
+                print("failed to sell " + heldOrder)
+
+
+def addTrailingStops(alpaca):
+    # Go through all orders up until yesterday
+    closed_orders = alpaca.list_orders(
+        status='closed',
+        until=date.today()
+    )
+
+    open_orders = alpaca.list_orders(
+        status='open',
+        until=date.today()
+    )
+    open_sell_symbols = {order.symbol for order in open_orders if order.side == "sell" and order.filled_at == None}
+    positions = {position.symbol for position in alpaca.list_positions()}
+
+    for order in closed_orders:
+        # We only care about stocks we hold, or stocks that don't already have sell orders
+        if order.symbol not in positions or order.symbol in open_sell_symbols:
+            continue
+        
+        quantity = order.filled_qty
         try:
-            alpaca.submit_order(stock, qty, "side", "market", "day")
-            print("Market order of | " + str(qty) + " " + stock + " " + side + " | completed.")
-        except:
-            print("Market Order of | " + str(qty) + " " + stock + " " + side + " | did not go through.")
+            # Set a trailing stop for it
+            alpaca.submit_order(
+                symbol=order.symbol,
+                qty=quantity,
+                side='sell',
+                type='trailing_stop',
+                trail_percent=10,  # stop price will be hwm*0.90
+                time_in_force='gtc',
+            )
+        except Exception as e:
+            print(f"Unable to place sell order for {order.symbol}")
+            print(e)
+
+
 
 if __name__ == "__main__":
     parse_tweet("$GHSI to the moon")
