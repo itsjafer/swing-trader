@@ -70,7 +70,7 @@ def parse_tweet(tweet):
     # Add trailing stops to some of our orders
     addTrailingStops(alpaca)
 
-    if "added" not in tweet or "swing" not in tweet:
+    if "added" not in tweet and "swing" not in tweet:
         return False
 
     # Get the tweet
@@ -84,10 +84,17 @@ def parse_tweet(tweet):
     # trade risk = 15%
     # position size = account risk / (price * traderisk)
     purchases = collections.defaultdict(int)
+    if len(tickers) <= 0:
+        return False
+    
+    # Go through our open positions and sell any positions that are too old
+    sellStaleOrders(alpaca)
+
     for ticker in tickers:
         qty, price = getPositionSize(ticker, alpaca)
         if (qty > 0):
             purchases[ticker] = (qty, price)
+        break # testing only considering the first ticker mentioned 
 
     if len(purchases) <= 0:
         print("No purchases to be made")
@@ -106,9 +113,6 @@ def parse_tweet(tweet):
             print(f"Purchased {quantity} of {ticker} for {price}")
 
     account = alpaca.get_account()
-
-    # Go through our open positions and sell any positions that are too old
-    sellStaleOrders()
 
     if len(purchases) > 0:
         return False
@@ -207,7 +211,7 @@ def getStockTicker(tweet):
         word = word.replace("$", "")
         word = word.translate(str.maketrans('', '', string.punctuation))
         if word.upper() not in allTickers:
-            continue
+            continue 
         tickers.add(word.upper())
     return tickers
 
